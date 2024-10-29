@@ -1,4 +1,3 @@
-use::pyo3::prelude::*;
 use ggez::*;
 use ggez::graphics::Rect;
 use ggez::input::keyboard;
@@ -110,8 +109,6 @@ fn check_collision (ball_pos: mint::Point2<f32>, ball_radius: f32, rect: &ggez::
 
     return false;
 }
-
-
 
 impl ggez::event::EventHandler for State {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
