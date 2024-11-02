@@ -2,19 +2,26 @@ use ggez::*;
 use ggez::graphics;
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
+use rand::Rng;
 use crate::{GameState, PaddleAction};
 
 const SCREEN_WIDTH: f32 = 800.0;
 const SCREEN_HEIGHT: f32 = 600.0;
+const SCREEN_WIDTH_MID: f32 = SCREEN_WIDTH / 2.0;
+const SCREEN_HEIGHT_MID: f32 = SCREEN_HEIGHT / 2.0;
+
+const BALL_VELOCITY: f32 = 300.0;
 const BALL_RADIUS: f32 = 10.0;
+const BALL_RADIUS_MID: f32 = BALL_RADIUS / 2.0;
+
+const PAD_VELOCITY: f32 = 500.0;
 const PAD_LENGTH: f32 = 100.0;
 const PAD_WIDTH: f32 = 10.0;
+const PAD_LEFT_EDGE: f32 = 40.0;
 
 struct GameInstance {
-    ball_x: f32,
-    ball_y: f32,
-    ball_vel_x: f32,
-    ball_vel_y: f32,
+    ball_pos: mint::Point2<f32>,
+    ball_vel: mint::Vector2<f32>,
     paddle_y: f32,
     score: i32,
     action: Arc<Mutex<PaddleAction>>,
@@ -24,15 +31,48 @@ struct GameInstance {
 impl GameInstance {
     fn new(action: Arc<Mutex<PaddleAction>>, callback: Arc<Mutex<Option<PyObject>>>) -> Self {
         GameInstance {
-            ball_x: 400.0,
-            ball_y: 300.0,
-            ball_vel_x: -300.0,
-            ball_vel_y: 100.0,
-            paddle_y: 250.0,
+            ball_pos: mint::Point2 {
+                x: SCREEN_WIDTH_MID - BALL_RADIUS_MID,
+                y: SCREEN_HEIGHT_MID - BALL_RADIUS_MID
+            },
+            ball_vel: Self::generate_random_velocity(),
+            paddle_y: SCREEN_HEIGHT_MID - (PAD_LENGTH / 2.0),
             score: 0,
             action,
             callback,
         }
+    }
+
+    fn generate_random_velocity() -> mint::Vector2<f32> {
+        let mut rng = rand::thread_rng();
+        
+        // Random angle between -45 and 45 degrees (avoiding too vertical trajectories)
+        let angle = rng.gen_range(-std::f32::consts::PI/4.0..std::f32::consts::PI/4.0);
+        
+        // Calculate x and y components
+        let x = -BALL_VELOCITY * angle.cos();  // Negative x to start moving towards player
+        let y = BALL_VELOCITY * angle.sin();
+        
+        mint::Vector2 { x, y }
+    }
+
+    fn reset_ball(&mut self) {
+        self.ball_pos.x = SCREEN_WIDTH_MID - BALL_RADIUS_MID;
+        self.ball_pos.y = SCREEN_HEIGHT_MID - BALL_RADIUS_MID;
+        self.ball_vel = Self::generate_random_velocity();
+    }
+
+    fn check_collision(&self, ball_pos: mint::Point2<f32>, ball_radius: f32, paddle: &graphics::Rect) -> bool {
+        // Find the closest point on the rectangle to the circle's center
+        let closest_x = ball_pos.x.clamp(paddle.x, paddle.x + paddle.w);
+        let closest_y = ball_pos.y.clamp(paddle.y, paddle.y + paddle.h);
+
+        // Calculate the distance between the circle's center and the closest point
+        let distance_x = ball_pos.x - closest_x;
+        let distance_y = ball_pos.y - closest_y;
+
+        // If the distance is less than the circle's radius, there is a collision
+        (distance_x * distance_x + distance_y * distance_y) <= (ball_radius * ball_radius)
     }
 
     fn notify_python(&self) {
@@ -40,13 +80,11 @@ impl GameInstance {
             if let Some(callback) = &*callback_guard {
                 Python::with_gil(|py| {
                     let state = GameState {
-                        ball_x: self.ball_x,
-                        ball_y: self.ball_y,
+                        ball_x: self.ball_pos.x,
+                        ball_y: self.ball_pos.y,
                         paddle_y: self.paddle_y,
                         score: self.score,
                     };
-                    
-                    // Call Python callback with current state
                     let _ = callback.call1(py, (state,));
                 });
             }
@@ -56,24 +94,30 @@ impl GameInstance {
 
 impl event::EventHandler<GameError> for GameInstance {
     fn update(&mut self, _ctx: &mut Context) -> GameResult {
+        let dt = 0.016; // ~60 FPS
+
         // Update ball position
-        self.ball_x += self.ball_vel_x * 0.016;
-        self.ball_y += self.ball_vel_y * 0.016;
+        self.ball_pos.x += self.ball_vel.x * dt;
+        self.ball_pos.y += self.ball_vel.y * dt;
 
-        // Ball bouncing
-        if self.ball_y <= 0.0 || self.ball_y >= 600.0 {
-            self.ball_vel_y = -self.ball_vel_y;
-        }
-        if self.ball_x >= 800.0 {
-            self.ball_vel_x = -self.ball_vel_x;
+        // Ball bouncing off top and bottom
+        if self.ball_pos.y <= BALL_RADIUS || self.ball_pos.y >= SCREEN_HEIGHT - BALL_RADIUS {
+            self.ball_vel.y *= -1.0;
+            self.ball_pos.y = self.ball_pos.y.clamp(
+                BALL_RADIUS, 
+                SCREEN_HEIGHT - BALL_RADIUS
+            );
         }
 
-        // Reset on miss
-        if self.ball_x <= 0.0 {
-            self.ball_x = 400.0;
-            self.ball_y = 300.0;
-            self.ball_vel_x = -300.0;
-            self.ball_vel_y = 100.0;
+        // Ball bouncing off right wall
+        if self.ball_pos.x >= SCREEN_WIDTH - BALL_RADIUS {
+            self.ball_vel.x *= -1.0;
+            self.ball_pos.x = SCREEN_WIDTH - BALL_RADIUS;
+        }
+
+        // Ball passing left wall (reset)
+        if self.ball_pos.x <= BALL_RADIUS {
+            self.reset_ball();
             self.score = 0;
         }
 
@@ -81,24 +125,39 @@ impl event::EventHandler<GameError> for GameInstance {
         if let Ok(action) = self.action.lock() {
             match *action {
                 PaddleAction::Up => {
-                    if self.paddle_y > 0.0 {
-                        self.paddle_y -= 500.0 * 0.016;
-                    }
+                    self.paddle_y = (self.paddle_y - PAD_VELOCITY * dt)
+                        .max(0.0);
                 }
                 PaddleAction::Down => {
-                    if self.paddle_y < 500.0 {
-                        self.paddle_y += 500.0 * 0.016;
-                    }
+                    self.paddle_y = (self.paddle_y + PAD_VELOCITY * dt)
+                        .min(SCREEN_HEIGHT - PAD_LENGTH);
                 }
                 PaddleAction::Stay => {}
             }
         }
 
-        // Check paddle collision
-        if self.ball_x <= 50.0 && self.ball_x >= 40.0 &&
-           self.ball_y >= self.paddle_y && self.ball_y <= self.paddle_y + PAD_LENGTH {
-            self.ball_vel_x = -self.ball_vel_x;
-            self.score += 1;
+        // Check paddle collision with improved logic
+        let paddle_rect = graphics::Rect::new(
+            PAD_LEFT_EDGE,
+            self.paddle_y,
+            PAD_WIDTH,
+            PAD_LENGTH
+        );
+
+        if self.check_collision(self.ball_pos, BALL_RADIUS, &paddle_rect) {
+            // Check if collision is from top or bottom of paddle
+            if self.ball_pos.y < self.paddle_y || self.ball_pos.y > (self.paddle_y + PAD_LENGTH) {
+                // Top/bottom collision - reverse vertical velocity
+                self.ball_vel.y *= -1.0;
+                self.ball_pos.y += self.ball_vel.y * dt;
+            } else if self.check_collision(self.ball_pos, BALL_RADIUS, &paddle_rect) {
+                // Side collision - reverse horizontal velocity
+                self.ball_vel.x *= -1.0;
+                self.ball_pos.x += self.ball_vel.x * dt;
+                
+                // Increment score
+                self.score += 1;
+            }
         }
 
         // Notify Python of state change
@@ -114,10 +173,7 @@ impl event::EventHandler<GameError> for GameInstance {
         let ball = graphics::Mesh::new_circle(
             ctx,
             graphics::DrawMode::fill(),
-            mint::Point2{
-                x: self.ball_x,
-                y: self.ball_y
-            },
+            self.ball_pos,
             BALL_RADIUS,
             0.1,
             graphics::Color::WHITE,
@@ -127,12 +183,18 @@ impl event::EventHandler<GameError> for GameInstance {
         let pad = graphics::Mesh::new_rectangle(
             ctx,
             graphics::DrawMode::fill(),
-            graphics::Rect::new(40.0, self.paddle_y, PAD_WIDTH, PAD_LENGTH),
+            graphics::Rect::new(
+                PAD_LEFT_EDGE,
+                self.paddle_y,
+                PAD_WIDTH,
+                PAD_LENGTH
+            ),
             graphics::Color::WHITE,
         )?;
 
         // Draw score
-        let score_text = graphics::Text::new(format!("Score: {}", self.score));
+        let mut score_text = graphics::Text::new(format!("Score: {}", self.score));
+        score_text.set_scale(30.0);
 
         canvas.draw(&ball, graphics::DrawParam::default());
         canvas.draw(&pad, graphics::DrawParam::default());
@@ -143,13 +205,17 @@ impl event::EventHandler<GameError> for GameInstance {
     }
 }
 
+
 pub fn run_game(
     action: Arc<Mutex<PaddleAction>>,
     callback: Arc<Mutex<Option<PyObject>>>,
 ) -> GameResult {
-    let cb = ContextBuilder::new("pong", "you")
+    let cb = ContextBuilder::new("pong", "enstn")
         .window_mode(conf::WindowMode::default()
-            .dimensions(SCREEN_WIDTH, SCREEN_HEIGHT));
+            .dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
+            .transparent(true))
+        .window_setup(conf::WindowSetup::default()
+            .title("neuropong"));
 
     let (ctx, event_loop) = cb.build()?;
     let state = GameInstance::new(action, callback);

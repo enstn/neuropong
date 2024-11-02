@@ -1,3 +1,5 @@
+// because ggez requires main thread to render 
+
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::thread;
