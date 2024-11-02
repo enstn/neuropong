@@ -9,6 +9,10 @@ name = "neuropong"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.22.0"
+pyo3 = { version = "0.19.2", features = ["extension-module", "abi3-py38"] }
 ggez = "0.9.3"
+mint = "0.5"
 rand = "0.8.5"
+
+[build-dependencies]
+pyo3-build-config = "0.19.2"
