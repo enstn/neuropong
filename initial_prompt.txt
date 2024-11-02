@@ -1,0 +1,45 @@
+# Neuropong Project Context
+
+I'm working on a Pong game implementation that bridges Rust and Python using PyO3. The project consists of three main components:
+
+## 1. Game Implementation (game.rs)
+A Pong game implementation using the ggez game engine with the following key features:
+- Screen dimensions: 800x600
+- Ball with constant velocity and collision detection
+- Paddle control with up/down movement
+- Score tracking
+- Game state synchronization with Python
+
+## 2. Python Bindings (lib.rs)
+PyO3 bindings that expose the following to Python:
+- `PaddleAction` enum (Up, Down, Stay)
+- `PyGameState` class (ball_x, ball_y, paddle_y, score)
+- `PyPongController` class for game control
+
+## 3. Project Structure
+```
+Cargo.toml dependencies:
+- pyo3 = "0.19.2"
+- ggez = "0.9.3"
+- mint = "0.5"
+- rand = "0.8.5"
+```
+
+Here's my complete source code:
+
+[GAME IMPLEMENTATION - game.rs]
+```rust
+[Paste the entire contents of your game.rs file here]
+```
+
+[PYTHON BINDINGS - lib.rs]
+```rust
+[Paste the entire contents of your lib.rs file here]
+```
+
+[PROJECT CONFIG - Cargo.toml]
+```toml
+[Paste the entire contents of your Cargo.toml file here]
+```
+
+I need assistance with [specify your question/task here]. Please consider the full context of the project when providing guidance.

@@ -1,131 +1,108 @@
 use ggez::*;
 use ggez::graphics;
+use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
-use crate::{PyGameState, PaddleAction};
+use crate::{GameState, PaddleAction};
 
 const SCREEN_WIDTH: f32 = 800.0;
 const SCREEN_HEIGHT: f32 = 600.0;
-const SCREEN_WIDTH_MID: f32 = SCREEN_WIDTH / 2.0;
-const SCREEN_HEIGHT_MID: f32 = SCREEN_HEIGHT / 2.0;
-
-const BALL_VELOCITY: f32 = 300.0;
 const BALL_RADIUS: f32 = 10.0;
-const BALL_RADIUS_MID: f32 = BALL_RADIUS / 2.0;
-
-const PAD_VELOCITY: f32 = 500.0;
 const PAD_LENGTH: f32 = 100.0;
 const PAD_WIDTH: f32 = 10.0;
-const PAD_LEFT_EDGE: f32 = 40.0;
 
-struct Ball {
-    pos: mint::Point2<f32>,
-    vel: mint::Vector2<f32>,
-}
-
-impl Ball {
-    pub fn new() -> Self {
-        Ball {
-            pos: mint::Point2{
-                x: SCREEN_WIDTH_MID - BALL_RADIUS_MID, 
-                y: SCREEN_HEIGHT_MID - BALL_RADIUS_MID
-            },
-            vel: mint::Vector2{
-                x: BALL_VELOCITY, 
-                y: BALL_VELOCITY
-            },
-        }
-    }
-}
-
-struct Pad {
-    rect: graphics::Rect,
-    velocity: f32,
-}
-
-impl Pad {
-    pub fn new() -> Self {
-        Pad {
-            rect: graphics::Rect::new(
-                PAD_LEFT_EDGE,
-                SCREEN_HEIGHT_MID - (PAD_LENGTH / 2.0),
-                PAD_WIDTH,
-                PAD_LENGTH,
-            ),
-            velocity: 0.0,
-        }
-    }
-}
-
-struct GameState {
-    ball: Ball,
-    pad: Pad,
+struct GameInstance {
+    ball_x: f32,
+    ball_y: f32,
+    ball_vel_x: f32,
+    ball_vel_y: f32,
+    paddle_y: f32,
     score: i32,
-    py_state: Arc<Mutex<PyGameState>>,
-    py_action: Arc<Mutex<PaddleAction>>,
+    action: Arc<Mutex<PaddleAction>>,
+    callback: Arc<Mutex<Option<PyObject>>>,
 }
 
-impl GameState {
-    pub fn new(py_state: Arc<Mutex<PyGameState>>, py_action: Arc<Mutex<PaddleAction>>) -> Self {
-        GameState {
-            ball: Ball::new(),
-            pad: Pad::new(),
+impl GameInstance {
+    fn new(action: Arc<Mutex<PaddleAction>>, callback: Arc<Mutex<Option<PyObject>>>) -> Self {
+        GameInstance {
+            ball_x: 400.0,
+            ball_y: 300.0,
+            ball_vel_x: -300.0,
+            ball_vel_y: 100.0,
+            paddle_y: 250.0,
             score: 0,
-            py_state,
-            py_action,
+            action,
+            callback,
         }
     }
 
-    fn update_python_state(&mut self) {
-        if let Ok(mut state) = self.py_state.lock() {
-            state.ball_x = self.ball.pos.x;
-            state.ball_y = self.ball.pos.y;
-            state.paddle_y = self.pad.rect.y;
-            state.score = self.score;
-        }
-    }
-
-    fn handle_paddle_action(&mut self, dt: f32) {
-        if let Ok(action) = self.py_action.lock() {
-            match *action {
-                PaddleAction::Up => {
-                    if self.pad.rect.y > 0.0 {
-                        self.pad.velocity = -PAD_VELOCITY;
-                        self.pad.rect.y += self.pad.velocity * dt;
-                    }
-                },
-                PaddleAction::Down => {
-                    if self.pad.rect.y < (SCREEN_HEIGHT - PAD_LENGTH) {
-                        self.pad.velocity = PAD_VELOCITY;
-                        self.pad.rect.y += self.pad.velocity * dt;
-                    }
-                },
-                PaddleAction::Stay => self.pad.velocity = 0.0,
+    fn notify_python(&self) {
+        if let Ok(callback_guard) = self.callback.lock() {
+            if let Some(callback) = &*callback_guard {
+                Python::with_gil(|py| {
+                    let state = GameState {
+                        ball_x: self.ball_x,
+                        ball_y: self.ball_y,
+                        paddle_y: self.paddle_y,
+                        score: self.score,
+                    };
+                    
+                    // Call Python callback with current state
+                    let _ = callback.call1(py, (state,));
+                });
             }
         }
     }
 }
 
-impl event::EventHandler<GameError> for GameState {
-    fn update(&mut self, ctx: &mut Context) -> GameResult {
-        let dt = ctx.time.delta().as_secs_f32();
-
+impl event::EventHandler<GameError> for GameInstance {
+    fn update(&mut self, _ctx: &mut Context) -> GameResult {
         // Update ball position
-        self.ball.pos.x += self.ball.vel.x * dt;
-        self.ball.pos.y += self.ball.vel.y * dt;
+        self.ball_x += self.ball_vel_x * 0.016;
+        self.ball_y += self.ball_vel_y * 0.016;
 
-        // Handle ball collisions
-        if self.ball.pos.x > SCREEN_WIDTH || self.ball.pos.x < 0.0 {
-            self.ball.vel.x *= -1.0;
+        // Ball bouncing
+        if self.ball_y <= 0.0 || self.ball_y >= 600.0 {
+            self.ball_vel_y = -self.ball_vel_y;
         }
-        if self.ball.pos.y > SCREEN_HEIGHT || self.ball.pos.y < 0.0 {
-            self.ball.vel.y *= -1.0;
+        if self.ball_x >= 800.0 {
+            self.ball_vel_x = -self.ball_vel_x;
         }
 
-        // Handle paddle movement
-        self.handle_paddle_action(dt);
+        // Reset on miss
+        if self.ball_x <= 0.0 {
+            self.ball_x = 400.0;
+            self.ball_y = 300.0;
+            self.ball_vel_x = -300.0;
+            self.ball_vel_y = 100.0;
+            self.score = 0;
+        }
 
-        // Update Python state
-        self.update_python_state();
+        // Update paddle based on current action
+        if let Ok(action) = self.action.lock() {
+            match *action {
+                PaddleAction::Up => {
+                    if self.paddle_y > 0.0 {
+                        self.paddle_y -= 500.0 * 0.016;
+                    }
+                }
+                PaddleAction::Down => {
+                    if self.paddle_y < 500.0 {
+                        self.paddle_y += 500.0 * 0.016;
+                    }
+                }
+                PaddleAction::Stay => {}
+            }
+        }
+
+        // Check paddle collision
+        if self.ball_x <= 50.0 && self.ball_x >= 40.0 &&
+           self.ball_y >= self.paddle_y && self.ball_y <= self.paddle_y + PAD_LENGTH {
+            self.ball_vel_x = -self.ball_vel_x;
+            self.score += 1;
+        }
+
+        // Notify Python of state change
+        self.notify_python();
 
         Ok(())
     }
@@ -137,7 +114,10 @@ impl event::EventHandler<GameError> for GameState {
         let ball = graphics::Mesh::new_circle(
             ctx,
             graphics::DrawMode::fill(),
-            self.ball.pos,
+            mint::Point2{
+                x: self.ball_x,
+                y: self.ball_y
+            },
             BALL_RADIUS,
             0.1,
             graphics::Color::WHITE,
@@ -147,25 +127,32 @@ impl event::EventHandler<GameError> for GameState {
         let pad = graphics::Mesh::new_rectangle(
             ctx,
             graphics::DrawMode::fill(),
-            self.pad.rect,
+            graphics::Rect::new(40.0, self.paddle_y, PAD_WIDTH, PAD_LENGTH),
             graphics::Color::WHITE,
         )?;
 
+        // Draw score
+        let score_text = graphics::Text::new(format!("Score: {}", self.score));
+
         canvas.draw(&ball, graphics::DrawParam::default());
         canvas.draw(&pad, graphics::DrawParam::default());
+        canvas.draw(&score_text, graphics::DrawParam::default().dest([10.0, 10.0]));
+        
         canvas.finish(ctx)?;
-
         Ok(())
     }
 }
 
-pub fn run_game(py_state: Arc<Mutex<PyGameState>>, py_action: Arc<Mutex<PaddleAction>>) {
+pub fn run_game(
+    action: Arc<Mutex<PaddleAction>>,
+    callback: Arc<Mutex<Option<PyObject>>>,
+) -> GameResult {
     let cb = ContextBuilder::new("pong", "you")
         .window_mode(conf::WindowMode::default()
             .dimensions(SCREEN_WIDTH, SCREEN_HEIGHT));
 
-    if let Ok((ctx, event_loop)) = cb.build() {
-        let state = GameState::new(py_state, py_action);
-        let _ = event::run(ctx, event_loop, state);
-    }
+    let (ctx, event_loop) = cb.build()?;
+    let state = GameInstance::new(action, callback);
+    
+    event::run(ctx, event_loop, state)
 }

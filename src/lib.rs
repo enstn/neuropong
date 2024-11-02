@@ -1,6 +1,6 @@
-use pyo3::{prelude::*, types::PyModule};
-use std::sync::{Arc,Mutex};
-// use pyo3::types::IntoPyDict;
+use pyo3::prelude::*;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 #[pyclass]
 #[derive(Clone, Copy, PartialEq)]
@@ -22,7 +22,7 @@ impl PaddleAction {
 
 #[pyclass]
 #[derive(Clone)]
-pub struct PyGameState {
+pub struct GameState {
     #[pyo3(get)]
     pub ball_x: f32,
     #[pyo3(get)]
@@ -34,66 +34,59 @@ pub struct PyGameState {
 }
 
 #[pymethods]
-impl PyGameState {
+impl GameState {
     #[new]
     fn new() -> Self {
-        PyGameState {
-            ball_x: 0.0,
-            ball_y: 0.0,
-            paddle_y: 0.0,
+        GameState {
+            ball_x: 400.0,
+            ball_y: 300.0,
+            paddle_y: 250.0,
             score: 0,
         }
     }
 }
 
 #[pyclass]
-pub struct PyPongController {
-    state: Arc<Mutex<PyGameState>>,
+pub struct PongController {
     action: Arc<Mutex<PaddleAction>>,
+    callback: Arc<Mutex<Option<PyObject>>>,
 }
 
 #[pymethods]
-impl PyPongController {
+impl PongController {
     #[new]
     fn new() -> PyResult<Self> {
-        Ok(PyPongController {
-            state: Arc::new(Mutex::new(PyGameState::new())),
+        Ok(PongController {
             action: Arc::new(Mutex::new(PaddleAction::Stay)),
+            callback: Arc::new(Mutex::new(None)),
         })
     }
 
-    fn get_state(&self) -> PyResult<PyGameState> {
-        Ok(self.state
-            .lock()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
-            .clone())
+    fn set_action(&self, action: PaddleAction) -> PyResult<()> {
+        *self.action.lock().unwrap() = action;
+        Ok(())
     }
 
-    fn set_action(&self, action: PaddleAction) -> PyResult<()> {
-        *self.action
-            .lock()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))? = action;
+    fn register_callback(&self, callback: PyObject) -> PyResult<()> {
+        *self.callback.lock().unwrap() = Some(callback);
         Ok(())
     }
 
     fn start_game(&self) -> PyResult<()> {
-        let state = self.state.clone();
         let action = self.action.clone();
+        let callback = self.callback.clone();
         
-        std::thread::spawn(move || {
-            crate::game::run_game(state, action);
-        });
-        
-        Ok(())
+        // Run the game on the main thread
+        crate::game::run_game(action, callback)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     }
 }
 
-/// A Python module implemented in Rust.
 #[pymodule]
-fn neuropong(py: Python, m: &PyModule) -> PyResult<()> {
-    m.add("PaddleAction", py.get_type::<PaddleAction>())?;
-    m.add("PyGameState", py.get_type::<PyGameState>())?;
-    m.add("PongController", py.get_type::<PyPongController>())?;
+fn neuropong(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<PaddleAction>()?;
+    m.add_class::<GameState>()?;
+    m.add_class::<PongController>()?;
     Ok(())
 }
 
