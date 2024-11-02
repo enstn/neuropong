@@ -4,7 +4,7 @@ This is my trials & errors on training (simulated) neurons to pingpang some pong
 ## ToDos
 - [x] make a working game instance in Rust
     - [x] fix edge bug
-    - [ ] wrap game with Py03 
+    - [x] wrap game with Py03 
 - [ ] black vodoo magic with Brian2
     - [ ] set up proper bindings
     - [ ] set up network
