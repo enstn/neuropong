@@ -14,7 +14,7 @@ This is my trials & errors on training (simulated) neurons to pingpang some pong
 ## WhyNotDos
 - [ ] rebound sounds! (bongs are crucial elements)
 
-[^1] Using 0.19.2 because the latest one has some type bound issues with my nighty rust version.
+[^1]: Using 0.19.2 because the latest one has some type bound issues with my nighty rust version.
 
 > [!CAUTION]
 > Code reviews might lead to subsequent eye bleaching or forced conversion to buddhism. The author is yet a novice.
