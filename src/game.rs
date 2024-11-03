@@ -1,5 +1,7 @@
+use ggez::audio::SoundSource;
 use ggez::*;
 use ggez::graphics;
+use ggez::audio;
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
 use rand::Rng;
@@ -26,11 +28,14 @@ struct GameInstance {
     score: i32,
     action: Arc<Mutex<PaddleAction>>,
     callback: Arc<Mutex<Option<PyObject>>>,
+    bong_sound: audio::Source,
 }
 
 impl GameInstance {
-    fn new(action: Arc<Mutex<PaddleAction>>, callback: Arc<Mutex<Option<PyObject>>>) -> Self {
-        GameInstance {
+    fn new(ctx: &mut Context, action: Arc<Mutex<PaddleAction>>, callback: Arc<Mutex<Option<PyObject>>>) -> GameResult<Self> {
+        let bong_sound = audio::Source::new(ctx, "/sound.ogg")?;
+
+        Ok(GameInstance {
             ball_pos: mint::Point2 {
                 x: SCREEN_WIDTH_MID - BALL_RADIUS_MID,
                 y: SCREEN_HEIGHT_MID - BALL_RADIUS_MID
@@ -40,7 +45,8 @@ impl GameInstance {
             score: 0,
             action,
             callback,
-        }
+            bong_sound,
+        })
     }
 
     fn generate_random_velocity() -> mint::Vector2<f32> {
@@ -93,7 +99,7 @@ impl GameInstance {
 }
 
 impl event::EventHandler<GameError> for GameInstance {
-    fn update(&mut self, _ctx: &mut Context) -> GameResult {
+    fn update(&mut self, ctx: &mut Context) -> GameResult {
         let dt = 0.016; // ~60 FPS
 
         // Update ball position
@@ -157,6 +163,7 @@ impl event::EventHandler<GameError> for GameInstance {
                 
                 // Increment score
                 self.score += 1;
+                let _ = self.bong_sound.play_detached(ctx);
             }
         }
 
@@ -215,10 +222,12 @@ pub fn run_game(
             .dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
             .transparent(true))
         .window_setup(conf::WindowSetup::default()
-            .title("neuropong"));
+            .title("neuropong"))
+        .add_resource_path("res");
+        
 
-    let (ctx, event_loop) = cb.build()?;
-    let state = GameInstance::new(action, callback);
+    let (mut ctx, event_loop) = cb.build()?;
+    let state = GameInstance::new(&mut ctx, action, callback)?;
     
     event::run(ctx, event_loop, state)
 }
