@@ -12,7 +12,7 @@ This is my trials & errors on training (simulated) neurons to pingpang some pong
 - [ ] transition from BRIAN to NEURON
 
 ## WhyNotDos
-- [ ] rebound sounds! (bongs are crucial elements)
+- [x] rebound sounds! (bongs are crucial elements)
 
 > [!CAUTION]
 > Code reviews might lead to subsequent eye bleaching or forced conversion to buddhism. The author is yet a novice.

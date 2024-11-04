@@ -12,7 +12,7 @@ const SCREEN_HEIGHT: f32 = 600.0;
 const SCREEN_WIDTH_MID: f32 = SCREEN_WIDTH / 2.0;
 const SCREEN_HEIGHT_MID: f32 = SCREEN_HEIGHT / 2.0;
 
-const BALL_VELOCITY: f32 = 300.0;
+const BALL_VELOCITY: f32 = 400.0;
 const BALL_RADIUS: f32 = 10.0;
 const BALL_RADIUS_MID: f32 = BALL_RADIUS / 2.0;
 
@@ -28,12 +28,16 @@ struct GameInstance {
     score: i32,
     action: Arc<Mutex<PaddleAction>>,
     callback: Arc<Mutex<Option<PyObject>>>,
-    bong_sound: audio::Source,
+    sound1: audio::Source,
+    sound2: audio::Source,
+    sound3: audio::Source,
 }
 
 impl GameInstance {
     fn new(ctx: &mut Context, action: Arc<Mutex<PaddleAction>>, callback: Arc<Mutex<Option<PyObject>>>) -> GameResult<Self> {
-        let bong_sound = audio::Source::new(ctx, "/sound.ogg")?;
+        let sound1 = audio::Source::new(ctx, "/plop.mp3")?;
+        let sound2 = audio::Source::new(ctx, "/sound.ogg")?;
+        let sound3 = audio::Source::new(ctx, "/stomp.mp3")?;
 
         Ok(GameInstance {
             ball_pos: mint::Point2 {
@@ -45,7 +49,9 @@ impl GameInstance {
             score: 0,
             action,
             callback,
-            bong_sound,
+            sound1,
+            sound2,
+            sound3,
         })
     }
 
@@ -56,7 +62,7 @@ impl GameInstance {
         let angle = rng.gen_range(-std::f32::consts::PI/4.0..std::f32::consts::PI/4.0);
         
         // Calculate x and y components
-        let x = -BALL_VELOCITY * angle.cos();  // Negative x to start moving towards player
+        let x = BALL_VELOCITY * angle.cos();  // positive x go give agent time to adjust
         let y = BALL_VELOCITY * angle.sin();
         
         mint::Vector2 { x, y }
@@ -113,18 +119,21 @@ impl event::EventHandler<GameError> for GameInstance {
                 BALL_RADIUS, 
                 SCREEN_HEIGHT - BALL_RADIUS
             );
+            let _ = self.sound2.play_detached(ctx);
         }
 
         // Ball bouncing off right wall
         if self.ball_pos.x >= SCREEN_WIDTH - BALL_RADIUS {
             self.ball_vel.x *= -1.0;
             self.ball_pos.x = SCREEN_WIDTH - BALL_RADIUS;
+            let _ = self.sound2.play_detached(ctx);
         }
 
         // Ball passing left wall (reset)
         if self.ball_pos.x <= BALL_RADIUS {
             self.reset_ball();
             self.score = 0;
+            let _ = self.sound3.play_detached(ctx);
         }
 
         // Update paddle based on current action
@@ -163,7 +172,7 @@ impl event::EventHandler<GameError> for GameInstance {
                 
                 // Increment score
                 self.score += 1;
-                let _ = self.bong_sound.play_detached(ctx);
+                let _ = self.sound1.play_detached(ctx);
             }
         }
 
@@ -189,7 +198,7 @@ impl event::EventHandler<GameError> for GameInstance {
         // Draw paddle
         let pad = graphics::Mesh::new_rectangle(
             ctx,
-            graphics::DrawMode::fill(),
+            graphics::DrawMode::stroke(1.0),
             graphics::Rect::new(
                 PAD_LEFT_EDGE,
                 self.paddle_y,
