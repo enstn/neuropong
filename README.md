@@ -7,7 +7,7 @@ This is my trials & errors on training (simulated) neurons to pingpang some pong
     - [x] wrap game with PyO3[^1]
 - [x] black vodoo magic with Brian2
     - [x] neuronal test structure
-    - [x] simple agent with test structure LIF
+    - [x] simple agent with test neuronal structure
     - [ ] build an agent that is able to actually play pong
 - [ ] transition from BRIAN to NEURON
 
