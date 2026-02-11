@@ -1,6 +1,5 @@
 # neuropong <sup></sup>
-This is my trials & errors on training (simulated) neurons to pingpang some pongs. Inspired by this 2022 [paper](https://www.cell.com/neuron/fulltext/S0896-6273(22)00806-6?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS0896627322008066%3Fshowall%3Dtrue) from [Cortical Labs](https://corticallabs.com/). I made this to have some hands on experience for the biosensors & bioelectricity lecture at ETH Zurich.
-
+This is my trials & errors on training (simulated) neurons to pingpang some pongs. Inspired by this 2022 [paper](https://www.cell.com/neuron/fulltext/S0896-6273(22)00806-6?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS0896627322008066%3Fshowall%3Dtrue) from [Cortical Labs](https://corticallabs.com/). It's a side project since I wanted to build something after attending the biosensors lecture at ETH Zurich.
 ## ToDos
 - [x] make a working game instance in Rust
     - [x] fix edge bug
